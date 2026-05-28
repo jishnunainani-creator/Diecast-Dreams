@@ -3,14 +3,35 @@ import { useState, useEffect, useRef } from "react";
 // ══════════════ CONFIG ══════════════
 const APP_NAME        = "Diecast Dreams";
 const TAGLINE         = "Premium Diecast · Ahmedabad, Gujarat";
-const WHATSAPP_NUMBER = "919999999999";
+const WHATSAPP_NUMBER = "918238775276";
 const WA_COMMUNITY    = "https://chat.whatsapp.com/Is8xqmmaGaoFfvIpyKzTRs";
 const INSTAGRAM_URL   = "https://www.instagram.com/diecastsdreams";
 const INSTAGRAM_HANDLE= "@diecastsdreams";
-const ADMIN_PHONE     = "9999999999";
-const ADMIN_PASSWORD  = "hotwheels123";
+const ADMIN_PHONE     = "8238775276";
+const ADMIN_PASSWORD  = "hotwheels2312";
 const FEEDBACK_FORM   = "https://forms.gle/nC6BnHPJc5kqfmFC9";
 const LOGO_URL        = "https://i.ibb.co/TxBJ8SJj/logo.jpg";
+const SHEETS_API      = "https://script.google.com/macros/s/AKfycbwxJhClX0cF1a5OSA8bP0GFJPYLbPejRFPM_61d7yBuILWZjjLsgO5lZ017En-KpE9pxA/exec";
+
+// ── Google Sheets helpers ──
+async function sheetsGet(action) {
+  try {
+    const r = await fetch(`${SHEETS_API}?action=${action}`);
+    const j = await r.json();
+    return j.ok ? j.data : null;
+  } catch { return null; }
+}
+async function sheetsPost(body) {
+  try {
+    const r = await fetch(SHEETS_API, {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" }
+    });
+    const j = await r.json();
+    return j.ok ? j.data : null;
+  } catch { return null; }
+}
 // ════════════════════════════════════
 
 const DEFAULT_CATEGORIES = [
