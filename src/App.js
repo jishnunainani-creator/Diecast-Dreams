@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-
+import { supabase } from "./supabase";
 // ══════════════ CONFIG ══════════════
 const APP_NAME        = "Diecast Dreams";
 const TAGLINE         = "Premium Diecast · Ahmedabad, Gujarat";
@@ -58,9 +58,20 @@ const BLANK_CAR = {name:"",categoryId:"mainline",price:"",stock:"In Stock",desc:
 const BLANK_CAT = {label:"",icon:"🚗",color:"#dc2626"};
 
 function usePersist(key, init) {
-  const [v,sv] = useState(() => { try { const s=localStorage.getItem(key); return s?JSON.parse(s):init; } catch { return init; } });
-  useEffect(() => { try { localStorage.setItem(key,JSON.stringify(v)); } catch {} }, [v,key]);
-  return [v,sv];
+  const [v, sv] = useState(() => {
+    try {
+      const s = localStorage.getItem(key);
+      return s ? JSON.parse(s) : init;
+    } catch {
+      return init;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem(key, JSON.stringify(v));
+  }, [key, v]);
+
+  return [v, sv];
 }
 
 async function resizeImage(file, maxW=900, maxH=700, q=0.85) {
@@ -94,7 +105,29 @@ function Toast({msg}) {
 export default function App() {
   const [categories,setCategories] = usePersist("dd3_cats", DEFAULT_CATEGORIES);
   const [allTags,setAllTags]       = usePersist("dd3_tags", DEFAULT_TAGS);
-  const [cars,setCars]             = usePersist("dd3_cars", []);
+  const [cars, setCars] = useState([]);
+  useEffect(() => {
+  fetchCars();
+}, []);
+
+async function fetchCars() {
+  const { data, error } = await supabase
+    .from("cars")
+    .select("*");
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  setCars(
+  (data || []).map(car => ({
+    ...car,
+    categoryId: car.category,
+    desc: car.description
+  }))
+);
+}
   const [wish,setWish]             = usePersist("dd3_wish", []);
   const [cart,setCart]             = usePersist("dd3_cart", []);
   const [orders,setOrders]         = usePersist("dd3_orders", []);
@@ -231,22 +264,86 @@ export default function App() {
 
   // ── Admin Cars ──
   function openCarForm(car) { setEditCarId(car?car.id:null); setCarForm(car?{...car}:BLANK_CAR); nav("admin_car_form"); }
-  function saveCar() {
-    if(!carForm.name.trim()||!carForm.price) { toast_("Name and price required"); return; }
-    const saved = {...carForm, price:Number(carForm.price), id:editCarId||Date.now()};
-    if(editCarId) setCars(c=>c.map(x=>x.id===editCarId?saved:x));
-    else setCars(c=>[...c,saved]);
-    nav("admin_cars"); toast_(editCarId?"Car updated ✅":"Car added 🚗");
+  async function saveCar() {
+  if (!carForm.name.trim() || !carForm.price) {
+    toast_("Name and price required");
+    return;
   }
-  function deleteCar(id) { if(window.confirm("Delete this car?")) { setCars(c=>c.filter(x=>x.id!==id)); toast_("Deleted"); } }
+
+  const newCar = {
+    name: carForm.name,
+    category: carForm.categoryId,
+    price: Number(carForm.price),
+    stock: carForm.stock,
+    description: carForm.desc,
+    year: carForm.year,
+    images: carForm.images || [],
+    tags: carForm.tags || [],
+    is_featured: false
+  };
+
+  const { error } = await supabase
+    .from("cars")
+    .insert([newCar]);
+
+  if (error) {
+    console.log(error);
+    alert(JSON.stringify(error));
+    toast_("Error saving car");
+    return;
+  }
+
+  toast_("Car added successfully 🚗");
+
+  fetchCars();
+
+  nav("admin_cars");
+}
+  async function deleteCar(id) {
+
+  if (!window.confirm("Delete this car?")) return;
+
+  const { error } = await supabase
+    .from("cars")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error(error);
+    toast_("Delete failed");
+    return;
+  }
+
+  setCars(c => c.filter(x => x.id !== id));
+
+  toast_("Deleted successfully 🗑️");
+}
   async function handleImg(file) {
-    if(!file) return;
-    if((carForm.images||[]).length>=5) { toast_("Max 5 photos"); return; }
-    setImgLoading(true);
-    try { const r=await resizeImage(file); setCarForm(f=>({...f,images:[...(f.images||[]),r]})); toast_("Photo added ✅"); }
-    catch { toast_("Upload failed"); }
-    setImgLoading(false);
+  if(!file) return;
+
+  if((carForm.images||[]).length>=5) {
+    toast_("Max 5 photos");
+    return;
   }
+
+  setImgLoading(true);
+
+  try {
+    const r = await resizeImage(file);
+
+    setCarForm(f => ({
+      ...f,
+      images: [...(f.images||[]), r]
+    }));
+
+    toast_("Photo added ✅");
+
+  } catch {
+    toast_("Upload failed");
+  }
+
+  setImgLoading(false);
+}
   const toggleTag = tag => setCarForm(f => { const tags=f.tags||[]; return {...f,tags:tags.includes(tag)?tags.filter(t=>t!==tag):[...tags,tag]}; });
 
   // ── Admin Categories ──
@@ -971,7 +1068,19 @@ export default function App() {
         <div style={{background:"#fff",borderRadius:16,padding:"24px",boxShadow:"0 1px 6px #0001"}}>
           <h2 style={{fontSize:20,fontWeight:800,marginBottom:20}}>{editCarId?"Edit Car":"Add New Car"}</h2>
           <div style={{marginBottom:18}}>
-            <label style={lbl}>Car Photos (up to 5) <span style={{color:"#aaa",fontWeight:400}}>— first = main display</span></label>
+            <label style={lbl}>Car Photos (up to 5)
+              <input
+  type="text"
+  placeholder="Paste image URL here"
+  value={carForm.images?.[0] || ""}
+  onChange={(e) =>
+    setCarForm(f => ({
+      ...f,
+      images: [e.target.value]
+    }))
+  }
+  style={{...inp, marginBottom:12}}
+/> <span style={{color:"#aaa",fontWeight:400}}>— first = main display</span></label>
             <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{if(e.target.files[0]){await handleImg(e.target.files[0]);e.target.value="";}}}/>
             <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:8}}>
               {(carForm.images||[]).map((img,i)=>(
